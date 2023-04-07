@@ -596,7 +596,7 @@ void find_regular_setup(Vec3f pos, float speed) {
     for (int i = 0; i < 8192; i++) {
         printf("%d\n", i);
         int a0 = (65536 + (gArctanTable[i] % 65536)) % 65536;
-        //a0 = 30338;
+
         if (atanLookupTable[a0][0] == 1) {
             SurfaceG* startFloor;
             float floorY;
@@ -668,171 +668,141 @@ __global__ void check_slide_setup(float pos_x, float pos_y, float pos_z, float s
     float zVel = gCosineTableG[a0 >> 4] * speed;
     float oSpeed = sqrtf(xVel * xVel + zVel * zVel);
 
-    float xS;
-    if (x < 8) {
-        if (x > -8) {
-            xS = 0.0;
-        }
-        else {
-            xS = x + 6.0;
-        }
-    }
-    else {
-        xS = x - 6.0;
-    }
+    Vec3f nextPosition = { pos[0] + startFloor->normal[1] * (xVel / 4.0f), pos[1], pos[2] + startFloor->normal[1] * (zVel / 4.0f)};
 
-    float yS;
-    if (y < 8) {
-        if (y > -8) {
-            yS = 0.0;
-        }
-        else {
-            yS = y + 6.0;
-        }
-    }
-    else {
-        yS = y - 6.0;
-    }
+    SurfaceG* nextFloor;
+    int next_floor_idx = find_floorG(nextPosition, &nextFloor, floorY, floorsG, total_floorsG);
 
-    float mag = sqrtf(xS * xS + yS * yS);
-
-    if (mag > 64.0) {
-        xS = xS * (64.0 / mag);
-        yS = yS * (64.0 / mag);
-        mag = 64.0;
-    }
-
-    mag = ((mag / 64.0) * (mag / 64.0)) * 32.0;
-
-    if (mag > 0.0) {
-        int a = atan2sG(-yS, xS) + cameraYaw;
-        a = (65536 + a) % 65536;
-
-        int aDiff = (a - a0) % 65536;
-        aDiff = (65536 + aDiff) % 65536;
-        aDiff = aDiff - ((16 + (aDiff % 16)) % 16);
-
-        xVel += zVel * (mag / 32.0f) * gSineTableG[aDiff >> 4] * 0.05f;
-        zVel -= xVel * (mag / 32.0f) * gSineTableG[aDiff >> 4] * 0.05f;
-
-        float nSpeed = sqrtf(xVel * xVel + zVel * zVel);
-
-        xVel = xVel * oSpeed / nSpeed;
-        zVel = zVel * oSpeed / nSpeed;
-
-        float steepness = sqrtf(startFloor->normal[0] * startFloor->normal[0] + startFloor->normal[2] * startFloor->normal[2]);
-        int slopeAngle = atan2sG(startFloor->normal[2], startFloor->normal[0]);
-        slopeAngle = (65536 + slopeAngle) % 65536;
-
-        xVel += accel * steepness * gSineTableG[slopeAngle >> 4];
-        zVel += accel * steepness * gCosineTableG[slopeAngle >> 4];
-
-        float lossFactor = mag / 32.0f * gCosineTableG[aDiff >> 4] * 0.02f + 0.92f;
-
-        xVel *= lossFactor;
-        zVel *= lossFactor;
-
-        int qSteps = 0;
-        SurfaceG* currentFloor = startFloor;
-        Vec3f currentPosition = { pos[0], pos[1], pos[2] };
-        int floor_idx = -1;
-
-        while (qSteps < 4) {
-            Vec3f intendedPosition = { currentPosition[0] + currentFloor->normal[1] * (xVel / 4.0f), currentPosition[1], currentPosition[2] + currentFloor->normal[1] * (zVel / 4.0f) };
-            floor_idx = find_floorG(intendedPosition, &currentFloor, floorY, floorsG, total_floorsG);
-
-            if (floor_idx == -1) {
-                break;
-            }
-
-            currentPosition[0] = intendedPosition[0];
-            currentPosition[1] = intendedPosition[1];
-            currentPosition[2] = intendedPosition[2];
-
-            qSteps++;
-
-            if (intendedPosition[1] > floorY + 100.0f) {
-                break;
+    if (next_floor_idx == -1) {
+        float xS;
+        if (x < 8) {
+            if (x > -8) {
+                xS = 0.0;
             }
             else {
-                currentPosition[1] = floorY;
+                xS = x + 6.0;
             }
         }
+        else {
+            xS = x - 6.0;
+        }
 
-        bool intCrashTest = currentPosition[0] >= INT_MIN && currentPosition[0] <= INT_MAX && currentPosition[2] >= INT_MIN && currentPosition[2] <= INT_MAX;
+        float yS;
+        if (y < 8) {
+            if (y > -8) {
+                yS = 0.0;
+            }
+            else {
+                yS = y + 6.0;
+            }
+        }
+        else {
+            yS = y - 6.0;
+        }
 
-        if (qSteps > 0 && floor_idx != -1 && intCrashTest) {
-            int newAngle = atan2sG(zVel, xVel);
+        float mag = sqrtf(xS * xS + yS * yS);
 
-            int newFacingDYaw = (short)((short)a0 - (short)newAngle);
+        if (mag > 64.0) {
+            xS = xS * (64.0 / mag);
+            yS = yS * (64.0 / mag);
+            mag = 64.0;
+        }
 
-            if (newFacingDYaw > 0 && newFacingDYaw <= 0x4000) {
-                if ((newFacingDYaw -= 0x200) < 0) {
-                    newFacingDYaw = 0;
+        mag = ((mag / 64.0) * (mag / 64.0)) * 32.0;
+
+        if (mag > 0.0) {
+            int a = atan2sG(-yS, xS) + cameraYaw;
+            a = (65536 + a) % 65536;
+
+            int aDiff = (a - a0) % 65536;
+            aDiff = (65536 + aDiff) % 65536;
+            aDiff = aDiff - ((16 + (aDiff % 16)) % 16);
+
+            xVel += zVel * (mag / 32.0f) * gSineTableG[aDiff >> 4] * 0.05f;
+            zVel -= xVel * (mag / 32.0f) * gSineTableG[aDiff >> 4] * 0.05f;
+
+            float nSpeed = sqrtf(xVel * xVel + zVel * zVel);
+
+            xVel = xVel * oSpeed / nSpeed;
+            zVel = zVel * oSpeed / nSpeed;
+
+            float steepness = sqrtf(startFloor->normal[0] * startFloor->normal[0] + startFloor->normal[2] * startFloor->normal[2]);
+            int slopeAngle = atan2sG(startFloor->normal[2], startFloor->normal[0]);
+            slopeAngle = (65536 + slopeAngle) % 65536;
+
+            xVel += accel * steepness * gSineTableG[slopeAngle >> 4];
+            zVel += accel * steepness * gCosineTableG[slopeAngle >> 4];
+
+            float lossFactor = mag / 32.0f * gCosineTableG[aDiff >> 4] * 0.02f + 0.92f;
+
+            xVel *= lossFactor;
+            zVel *= lossFactor;
+
+            int qSteps = 0;
+            SurfaceG* currentFloor = startFloor;
+            Vec3f currentPosition = { pos[0], pos[1], pos[2] };
+            int floor_idx = -1;
+
+            while (qSteps < 4) {
+                Vec3f intendedPosition = { currentPosition[0] + currentFloor->normal[1] * (xVel / 4.0f), currentPosition[1], currentPosition[2] + currentFloor->normal[1] * (zVel / 4.0f) };
+                floor_idx = find_floorG(intendedPosition, &currentFloor, floorY, floorsG, total_floorsG);
+
+                if (floor_idx == -1) {
+                    break;
+                }
+
+                currentPosition[0] = intendedPosition[0];
+                currentPosition[1] = intendedPosition[1];
+                currentPosition[2] = intendedPosition[2];
+
+                qSteps++;
+
+                if (intendedPosition[1] > floorY + 100.0f) {
+                    break;
+                }
+                else {
+                    currentPosition[1] = floorY;
                 }
             }
-            else if (newFacingDYaw > -0x4000 && newFacingDYaw < 0) {
-                if ((newFacingDYaw += 0x200) > 0) {
-                    newFacingDYaw = 0;
-                }
-            }
-            else if (newFacingDYaw > 0x4000 && newFacingDYaw < 0x8000) {
-                if ((newFacingDYaw += 0x200) > 0x8000) {
-                    newFacingDYaw = 0x8000;
-                }
-            }
-            else if (newFacingDYaw > -0x8000 && newFacingDYaw < -0x4000) {
-                if ((newFacingDYaw -= 0x200) < -0x8000) {
-                    newFacingDYaw = -0x8000;
-                }
-            }
 
-            newAngle = (newAngle + newFacingDYaw) % 65536;
-            newAngle = (65536 + (int)newAngle) % 65536;
-            float newSpeed = sqrtf(xVel * xVel + zVel * zVel);
+            bool intCrashTest = currentPosition[0] >= INT_MIN && currentPosition[0] <= INT_MAX && currentPosition[2] >= INT_MIN && currentPosition[2] <= INT_MAX;
 
-            if (newFacingDYaw < -0x4000 || newFacingDYaw > 0x4000) {
-                newSpeed *= -1.0f;
-            }
+            if (qSteps > 0 && floor_idx != -1 && intCrashTest) {
+                int newAngle = atan2sG(zVel, xVel);
 
-            xVel = gSineTableG[newAngle >> 4] * newSpeed;
-            zVel = gCosineTableG[newAngle >> 4] * newSpeed;
+                int newFacingDYaw = (short)((short)a0 - (short)newAngle);
 
-            if (fabs(currentPosition[0]) < 8192 && fabs(currentPosition[2]) < 8192 && floorY >= minY) {
-                localNodes[idx * 5] = currentPosition[0];
-                localNodes[idx * 5 + 1] = currentPosition[1];
-                localNodes[idx * 5 + 2] = currentPosition[2];
-                localNodes[idx * 5 + 3] = newSpeed;
-                localNodes[idx * 5 + 4] = 1.0f;
-                return;
-            }
-
-            if (currentPosition[1] == floorY) {
-                int qSteps1 = 0;
-
-                while (qSteps1 < 4) {
-                    Vec3f intendedPosition = { currentPosition[0] + currentFloor->normal[1] * (xVel / 4.0f), currentPosition[1], currentPosition[2] + currentFloor->normal[1] * (zVel / 4.0f) };
-                    floor_idx = find_floorG(intendedPosition, &currentFloor, floorY, floorsG, total_floorsG);
-
-                    if (floor_idx == -1) {
-                        break;
+                if (newFacingDYaw > 0 && newFacingDYaw <= 0x4000) {
+                    if ((newFacingDYaw -= 0x200) < 0) {
+                        newFacingDYaw = 0;
                     }
-
-                    currentPosition[0] = intendedPosition[0];
-                    currentPosition[1] = intendedPosition[1];
-                    currentPosition[2] = intendedPosition[2];
-
-                    qSteps1++;
-
-                    if (intendedPosition[1] > floorY + 100.0f) {
-                        break;
+                }
+                else if (newFacingDYaw > -0x4000 && newFacingDYaw < 0) {
+                    if ((newFacingDYaw += 0x200) > 0) {
+                        newFacingDYaw = 0;
                     }
-                    else {
-                        currentPosition[1] = floorY;
+                }
+                else if (newFacingDYaw > 0x4000 && newFacingDYaw < 0x8000) {
+                    if ((newFacingDYaw += 0x200) > 0x8000) {
+                        newFacingDYaw = 0x8000;
+                    }
+                }
+                else if (newFacingDYaw > -0x8000 && newFacingDYaw < -0x4000) {
+                    if ((newFacingDYaw -= 0x200) < -0x8000) {
+                        newFacingDYaw = -0x8000;
                     }
                 }
 
-                intCrashTest &= intCrashTest = currentPosition[0] >= INT_MIN && currentPosition[0] <= INT_MAX && currentPosition[2] >= INT_MIN && currentPosition[2] <= INT_MAX;
+                newAngle = (newAngle + newFacingDYaw) % 65536;
+                newAngle = (65536 + (int)newAngle) % 65536;
+                float newSpeed = sqrtf(xVel * xVel + zVel * zVel);
+
+                if (newFacingDYaw < -0x4000 || newFacingDYaw > 0x4000) {
+                    newSpeed *= -1.0f;
+                }
+
+                xVel = gSineTableG[newAngle >> 4] * newSpeed;
+                zVel = gCosineTableG[newAngle >> 4] * newSpeed;
 
                 if (fabs(currentPosition[0]) < 8192 && fabs(currentPosition[2]) < 8192 && floorY >= minY) {
                     localNodes[idx * 5] = currentPosition[0];
@@ -842,22 +812,15 @@ __global__ void check_slide_setup(float pos_x, float pos_y, float pos_z, float s
                     localNodes[idx * 5 + 4] = 1.0f;
                     return;
                 }
-            }
 
-            if (currentPosition[1] > floorY) {
-                bool fallTest = true;
-                float yVel = 0.0f;
-
-                while (fallTest && currentPosition[1] > floorY) {
+                 if (currentPosition[1] == floorY) {
                     int qSteps1 = 0;
-                    yVel = fminf(yVel - mario_gravity, 75.0f);
 
                     while (qSteps1 < 4) {
-                        Vec3f intendedPosition = { currentPosition[0] + (xVel / 4.0f), currentPosition[1] + (yVel / 4.0f), currentPosition[2] + (zVel / 4.0f) };
+                        Vec3f intendedPosition = { currentPosition[0] + currentFloor->normal[1] * (xVel / 4.0f), currentPosition[1], currentPosition[2] + currentFloor->normal[1] * (zVel / 4.0f) };
                         floor_idx = find_floorG(intendedPosition, &currentFloor, floorY, floorsG, total_floorsG);
 
                         if (floor_idx == -1) {
-                            fallTest = false;
                             break;
                         }
 
@@ -867,49 +830,15 @@ __global__ void check_slide_setup(float pos_x, float pos_y, float pos_z, float s
 
                         qSteps1++;
 
-                        if (currentPosition[1] <= floorY) {
-                            if (fabs(currentPosition[0]) < 8192 && fabs(currentPosition[2]) < 8192 && floorY >= minY) {
-                                localNodes[idx * 5] = currentPosition[0];
-                                localNodes[idx * 5 + 1] = currentPosition[1];
-                                localNodes[idx * 5 + 2] = currentPosition[2];
-                                localNodes[idx * 5 + 3] = newSpeed;
-                                localNodes[idx * 5 + 4] = 1.0f;
-                                return;
-                            }
-
-                            currentPosition[1] = floorY;
-
-                            //Add extra check for speed loss w/ dust frames?
-                            //xVel = 0.98 * xVel;
-                            //zVel = 0.98 * zVel;
-
-                            int qSteps2 = 0;
-
-                            while (qSteps2 < 4) {
-                                Vec3f intendedPosition = { currentPosition[0] + currentFloor->normal[1] * (xVel / 4.0f), currentPosition[1], currentPosition[2] + currentFloor->normal[1] * (zVel / 4.0f) };
-                                floor_idx = find_floorG(intendedPosition, &currentFloor, floorY, floorsG, total_floorsG);
-
-                                if (floor_idx == -1) {
-                                    break;
-                                }
-
-                                currentPosition[0] = intendedPosition[0];
-                                currentPosition[1] = intendedPosition[1];
-                                currentPosition[2] = intendedPosition[2];
-
-                                qSteps2++;
-
-                                if (intendedPosition[1] > floorY + 100.0f) {
-                                    break;
-                                }
-                                else {
-                                    currentPosition[1] = floorY;
-                                }
-                            }
-
+                        if (intendedPosition[1] > floorY + 100.0f) {
                             break;
                         }
+                        else {
+                            currentPosition[1] = floorY;
+                        }
                     }
+
+                    intCrashTest &= currentPosition[0] >= INT_MIN && currentPosition[0] <= INT_MAX && currentPosition[2] >= INT_MIN && currentPosition[2] <= INT_MAX;
 
                     if (fabs(currentPosition[0]) < 8192 && fabs(currentPosition[2]) < 8192 && floorY >= minY) {
                         localNodes[idx * 5] = currentPosition[0];
@@ -921,14 +850,93 @@ __global__ void check_slide_setup(float pos_x, float pos_y, float pos_z, float s
                     }
                 }
 
-                intCrashTest &= currentPosition[0] >= INT_MIN && currentPosition[0] <= INT_MAX && currentPosition[2] >= INT_MIN && currentPosition[2] <= INT_MAX;
+                if (currentPosition[1] > floorY) {
+                    bool fallTest = true;
+                    float yVel = 0.0f;
 
-                if (fallTest && intCrashTest && currentPosition[1] != pos[1] && currentPosition[1] > minY) {
-                    localNodes[idx * 5] = currentPosition[0];
-                    localNodes[idx * 5 + 1] = currentPosition[1];
-                    localNodes[idx * 5 + 2] = currentPosition[2];
-                    localNodes[idx * 5 + 3] = newSpeed;
-                    localNodes[idx * 5 + 4] = 1.0f;
+                    while (fallTest && currentPosition[1] > floorY) {
+                        int qSteps1 = 0;
+
+                        while (qSteps1 < 4) {
+                            Vec3f intendedPosition = { currentPosition[0] + (xVel / 4.0f), currentPosition[1] + (yVel / 4.0f), currentPosition[2] + (zVel / 4.0f) };
+                            floor_idx = find_floorG(intendedPosition, &currentFloor, floorY, floorsG, total_floorsG);
+
+                            if (floor_idx == -1) {
+                                fallTest = false;
+                                break;
+                            }
+
+                            currentPosition[0] = intendedPosition[0];
+                            currentPosition[1] = intendedPosition[1];
+                            currentPosition[2] = intendedPosition[2];
+
+                            qSteps1++;
+
+                            if (currentPosition[1] <= floorY) {
+                                if (fabs(currentPosition[0]) < 8192 && fabs(currentPosition[2]) < 8192 && floorY >= minY) {
+                                    localNodes[idx * 5] = currentPosition[0];
+                                    localNodes[idx * 5 + 1] = currentPosition[1];
+                                    localNodes[idx * 5 + 2] = currentPosition[2];
+                                    localNodes[idx * 5 + 3] = newSpeed;
+                                    localNodes[idx * 5 + 4] = 1.0f;
+                                    return;
+                                }
+
+                                currentPosition[1] = floorY;
+
+                                //Add extra check for speed loss w/ dust frames?
+                                //xVel = 0.98 * xVel;
+                                //zVel = 0.98 * zVel;
+
+                                int qSteps2 = 0;
+
+                                while (qSteps2 < 4) {
+                                    Vec3f intendedPosition = { currentPosition[0] + currentFloor->normal[1] * (xVel / 4.0f), currentPosition[1], currentPosition[2] + currentFloor->normal[1] * (zVel / 4.0f) };
+                                    floor_idx = find_floorG(intendedPosition, &currentFloor, floorY, floorsG, total_floorsG);
+
+                                    if (floor_idx == -1) {
+                                        break;
+                                    }
+
+                                    currentPosition[0] = intendedPosition[0];
+                                    currentPosition[1] = intendedPosition[1];
+                                    currentPosition[2] = intendedPosition[2];
+
+                                    qSteps2++;
+
+                                    if (intendedPosition[1] > floorY + 100.0f) {
+                                        break;
+                                    }
+                                    else {
+                                        currentPosition[1] = floorY;
+                                    }
+                                }
+
+                                break;
+                            }
+                        }
+
+                        yVel = fmaxf(yVel - mario_gravity, -75.0f);
+
+                        if (fabs(currentPosition[0]) < 8192 && fabs(currentPosition[2]) < 8192 && floorY >= minY) {
+                            localNodes[idx * 5] = currentPosition[0];
+                            localNodes[idx * 5 + 1] = currentPosition[1];
+                            localNodes[idx * 5 + 2] = currentPosition[2];
+                            localNodes[idx * 5 + 3] = newSpeed;
+                            localNodes[idx * 5 + 4] = 1.0f;
+                            return;
+                        }
+                    }
+
+                    intCrashTest &= currentPosition[0] >= INT_MIN && currentPosition[0] <= INT_MAX && currentPosition[2] >= INT_MIN && currentPosition[2] <= INT_MAX;
+
+                    if (fallTest && intCrashTest && currentPosition[1] != pos[1] && currentPosition[1] > minY && currentFloor->normal[1] > 0.7880108f) {
+                        localNodes[idx * 5] = currentPosition[0];
+                        localNodes[idx * 5 + 1] = currentPosition[1];
+                        localNodes[idx * 5 + 2] = currentPosition[2];
+                        localNodes[idx * 5 + 3] = newSpeed;
+                        localNodes[idx * 5 + 4] = 1.0f;
+                    }
                 }
             }
         }
@@ -979,7 +987,7 @@ bool find_slide_setup(Vec3f pos, float speed, int cameraYaw, float accel, int id
                         if (store.find(key) == store.end()) {
                             float dist = sqrtf(localNodes[5 * j] * localNodes[5 * j] + localNodes[5 * j + 2] * localNodes[5 * j + 2]);
 
-                            if (dist < 1.5f * dist0) {
+                            if (dist < 1.6f * dist0) {
                                 treeNodes[treeEntries][0] = localNodes[5 * j];
                                 treeNodes[treeEntries][1] = localNodes[5 * j + 1];
                                 treeNodes[treeEntries][2] = localNodes[5 * j + 2];
@@ -1136,7 +1144,7 @@ void find_pu_route(Vec3f pos, float speed, Vec3f lakituPos) {
     for (int i = 0; i < treeEntries; i++) {
         float dist = sqrtf(treeNodes[i][0] * treeNodes[i][0] + treeNodes[i][2] * treeNodes[i][2]);
 
-        if (dist <= 10.0f * closest) {
+        if (dist <= 12.0f * closest) {
             printf("%d/%d - %.10g, %.10g, %.10g, %.10g - %.10g\n", i, treeEntries, treeNodes[i][0], treeNodes[i][1], treeNodes[i][2], treeNodes[i][3], closest);
 
             Vec3f currentPos = { treeNodes[i][0], treeNodes[i][1], treeNodes[i][2] };
